@@ -1,10 +1,10 @@
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
 import logging
 from dotenv import load_dotenv
 
-# Configure logging for production
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s %(levelname)s: %(message)s'
@@ -15,20 +15,37 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# Update CORS for production
+# CORS configuration - be very explicit
 allowed_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "https://legal-assistant-frontend-ttcd.onrender.com"
 ]
 
+# Add any additional origins from environment
 if os.getenv("ALLOWED_ORIGINS"):
-    production_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS").split(",")]
-    allowed_origins.extend(production_origins)
-    logger.info(f"Added production origins: {production_origins}")
+    env_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS").split(",")]
+    allowed_origins.extend(env_origins)
 
-logger.info(f"Allowed CORS origins: {allowed_origins}")
-CORS(app, origins=allowed_origins, supports_credentials=True)
+logger.info(f"Configured CORS origins: {allowed_origins}")
+
+# Configure CORS with explicit settings
+CORS(app, 
+     origins=allowed_origins,
+     methods=['GET', 'POST', 'OPTIONS'],
+     allow_headers=['Content-Type', 'Authorization'],
+     supports_credentials=True)
+
+# Add explicit OPTIONS handler for preflight requests
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        response = jsonify({'status': 'OK'})
+        response.headers.add('Access-Control-Allow-Origin', request.headers.get('Origin', '*'))
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
 
 # Initialize Groq client with error handling
 groq_client = None
