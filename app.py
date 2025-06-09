@@ -19,6 +19,7 @@ app = Flask(__name__)
 allowed_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://legal-assistant-frontend-ttcd.onrender.com"
 ]
 
 if os.getenv("ALLOWED_ORIGINS"):
