@@ -1,6 +1,5 @@
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
-from groq import Groq
 import os
 import logging
 from dotenv import load_dotenv
@@ -30,18 +29,32 @@ if os.getenv("ALLOWED_ORIGINS"):
 logger.info(f"Allowed CORS origins: {allowed_origins}")
 CORS(app, origins=allowed_origins, supports_credentials=True)
 
-# Initialize Groq client with simpler approach
+# Initialize Groq client with error handling
+groq_client = None
 try:
+    from groq import Groq
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         logger.error("GROQ_API_KEY environment variable not set")
-        groq_client = None
     else:
-        # Simple initialization without extra parameters
-        groq_client = Groq(api_key=api_key)
-        logger.info("Groq client initialized successfully")
+        # Try different initialization approaches
+        try:
+            groq_client = Groq(api_key=api_key)
+            logger.info("Groq client initialized successfully with standard method")
+        except TypeError as e:
+            logger.warning(f"Standard initialization failed: {e}")
+            try:
+                # Alternative initialization without extra kwargs
+                groq_client = Groq(api_key=api_key)
+                logger.info("Groq client initialized with alternative method")
+            except Exception as e2:
+                logger.error(f"Alternative initialization also failed: {e2}")
+                groq_client = None
+except ImportError as e:
+    logger.error(f"Failed to import Groq: {e}")
+    groq_client = None
 except Exception as e:
-    logger.error(f"Failed to initialize Groq client: {e}")
+    logger.error(f"Unexpected error initializing Groq client: {e}")
     groq_client = None
 
 @app.route('/', methods=['GET'])
@@ -63,7 +76,8 @@ def health():
         'status': 'healthy' if groq_client else 'degraded',
         'groq_client': groq_client is not None,
         'environment': os.getenv('FLASK_ENV', 'development'),
-        'port': os.getenv('PORT', '8000')
+        'port': os.getenv('PORT', '8000'),
+        'groq_api_key_set': bool(os.getenv("GROQ_API_KEY"))
     })
 
 @app.route('/api/chat', methods=['POST'])
@@ -95,6 +109,7 @@ User's question: {message}"""
             if file_names:
                 contextual_prompt += f"\n\nNote: The user has uploaded: {', '.join(file_names)}."
 
+        # Create chat completion
         chat_completion = groq_client.chat.completions.create(
             messages=[
                 {
@@ -132,7 +147,7 @@ Always recommend consulting with a qualified attorney for specific legal situati
     except Exception as e:
         logger.error(f"Error in chat endpoint: {str(e)}")
         return jsonify({
-            'error': 'An error occurred while processing your request. Please try again.'
+            'error': f'An error occurred while processing your request: {str(e)}'
         }), 500
 
 @app.errorhandler(404)
@@ -148,4 +163,5 @@ if __name__ == '__main__':
     port = int(os.getenv("PORT", 8000))
     debug = os.getenv("FLASK_ENV") == "development"
     logger.info(f"Starting server on port {port}")
+    logger.info(f"Groq client status: {'Ready' if groq_client else 'Not initialized'}")
     app.run(debug=debug, host="0.0.0.0", port=port)
